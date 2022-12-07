@@ -9,8 +9,7 @@ def copyfile(src_name, dst_name):
     shutil.copyfile(src_name, dst_name)
 
 
-def pair_rename(source1, source2, src1_type, src2_type,save_dir):
-    seq_idx = 1
+def pair_rename(source1, source2, src1_type, src2_type, save_dir, seq_idx=1):
     src1_files = glob.glob(os.path.join(source1, "*." + src1_type))
     # src2_files = glob.glob(os.path.join(source2, "*." + src2_type))
 
@@ -28,7 +27,5 @@ def pair_rename(source1, source2, src1_type, src2_type,save_dir):
             copyfile(src1, dst1)
             copyfile(src2, dst2)
             seq_idx += 1
-    pass
-
 
 pair_rename("/data/lj/datasets/vis/","/data/lj/datasets/vis/","json","jpg", "/data/lj/datasets/new_pandas/")
