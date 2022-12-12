@@ -7,34 +7,87 @@ import glob
 import json
 import numpy as np
 import copy
+import shutil
 
 import matplotlib.pyplot as plt
 import cv2
+
+def convert(init_label, label, classes):
+    init_label["imagePath"] = os.path.split(label["image"])[-1]
+    init_label["imageHeight"], init_label["imageWidth"], _ = cv2.imread(label["image"]).shape
+    
+    for box in label["bboxes"]:
+        shape = {}
+        cls_id,cx,cy,w,h = box
+        
+        if classes == None:
+            classes = {}
+        if cls_id not in classes:
+            classes[str(cls_id)] = cls_id
+
+        id2classes = {classes[key] : key for key in classes.keys()}
+        
+        w *= init_label["imageWidth"]
+        h *= init_label["imageHeight"]
+        cx *= init_label["imageWidth"]
+        cy *=init_label["imageHeight"]
+        
+        x1 = cx - w/2
+        y1 = cy - h/2
+        x2 = cx + w/2
+        y2 = cy + h/2
+        
+        shape = {
+            "label" : id2classes[cls_id],
+            "points" : [[x1,y1], [x2,y2]],
+            "group_id" : None,
+            "shape_type" : "rectangle",
+            "flags" : {}
+        }
+        init_label["shapes"].append(shape)
+    return init_label, classes
 
 class Labelme:
     """
     读取/可视化 Labelme 格式的标注
     """
-
     CLASSES = None
 
-    def __init__(self, image_path,json_path,image_type="jpg"):
-        # 加载图片-标签文件
-        self.label_dict = self._load_jsons_images(image_path, json_path, image_type)
-        # 检查图片-标签文件是否存在，若不存在则删除
-        self._check_label_image()
-        
-        # 图片-标签 数量
-        self._size = len(self.label_dict.keys())
+    def __init__(self, image_path=None,json_path=None,image_type="jpg"):
 
-        # 加载标注文件数据
-        self.CLASSES, self.labels = self._load_labels()
+        '''
+        self.labels = [
+            {
+                "image": <image-name>
+                "json" : <json-name>
+                "bboxes" : [[cls_id,cx, cy, w, h], ... ]
+            }
+        ]
+        '''
+        self.labels = []
+        self._init_label = {
+                "version": "5.1.1",
+                "flags": {},
+                "shapes":[],
+                "imageData": None,
+                "imagePath" : "",
+                "imageHeight": 0,
+                "imageWidth": 0,
+            }
+        
+        if image_path != None and json_path != None:
+            # 加载图片-标签文件
+            self.label_dict = self._load_jsons_images(image_path, json_path, image_type)
+            # 检查图片-标签文件是否存在，若不存在则删除
+            self._check_label_image()
+            # 加载标注文件数据
+            self.CLASSES, self.labels = self._load_labels()
 
     def __getitem__(self, idx):
         return self.get_label(idx)
 
     def __len__(self):
-        return self._size
+        return  len(self.labels)
 
     def _check_label_image(self):
         for json_file in self.label_dict.keys():
@@ -105,6 +158,9 @@ class Labelme:
 
     def get_classes(self):
         return self.CLASSES
+    
+    def set_classes(self, classes):
+        self.CLASSES = classes
 
     def get_label(self, index):
         label = copy.deepcopy(self.labels[index])
@@ -122,6 +178,42 @@ class Labelme:
             json_data[single_json] = image_name
         return json_data
 
+    # 初始化
+    def load(self, label, func = convert):
+        """
+        Args:
+            label : {
+                "image": <image-name>,
+                "json" : <json-name>,
+                "bboxes" : [[cls_id, cx, cy, w, h]]
+            }
+        """
+        self.labels.append(label)
+    
+    def loads(self, labels):
+        for label in labels:
+            self.load(label)
+        pass
+    
+    # 存储
+    def save(self, base_path, func = convert):
+        if not os.path.exists(base_path):
+            os.makedirs(base_path)
+            
+        for label in self.labels:
+            init_label = copy.deepcopy(self._init_label)
+            # 设置转换函数，可以将label转换为目标格式
+            json_label, self.CLASSES = func(init_label, label, self.CLASSES)
+            
+            file_name = os.path.split(label["image"])[-1].split(".")[0] + ".json"
+            
+            with open(os.path.join(base_path, file_name), 'w') as fp:
+                json.dump(json_label, fp, indent=4)
+                
+            # 是否复制图像文件
+            shutil.copyfile(label["image"], os.path.join(base_path, os.path.split(label["image"])[-1]))
+
+    # 可视化
     def _vis_single(self, index, save_dir="."):
         # 可视化单张图片
         print(f"{index} VIS_SINGLE")
@@ -154,5 +246,22 @@ class Labelme:
             self._vis_single(index, save_dir=".")
 
 # test
-labelme = Labelme("/data/lj/datasets/new_pandas/", "/data/lj/datasets/new_pandas/")
-labelme.vis(100)
+l1 = Labelme("/data/lj/datasets/new_pandas/", "/data/lj/datasets/new_pandas/")
+l1_cls = l1.get_classes()
+print(l1_cls)
+
+l2 = Labelme()
+l2.set_classes(l1_cls)
+
+print(len(l1))
+print(len(l2))
+for i in range(10, 20):
+    label = l1.get_label(i)
+    l2.load(label)
+    
+l2.save("labelme/")
+
+print(len(l1))
+print(len(l2))
+    
+    
